@@ -1,133 +1,225 @@
-'use client'
+'use client';
 import Head from "next/head";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
+import { ArrowRightCircle, UserPlusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const Register = () => {
   const router = useRouter();
-  const [firstname, setFirstname] = useState('');
-  const [lastname, setLastname] = useState('');
-  const [username, setUsername] = useState('');
+  const fileInputRef = useRef(null);
+
+  const [step, setStep] = useState(1);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [registered, setRegistered] = useState(false);
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatar, setAvatar] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleNext = () => setStep(prev => prev + 1);
+  const handleBack = () => setStep(prev => prev - 1);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAvatar(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
-      setError(true);
-      setErrorMessage("Passwords do not match.");
+      setError("Passwords do not match.");
       return;
-    } 
+    }
 
     try {
-        setRegistered(true);
-        const response = await axios.post('http://127.0.0.1:8000/users/register/', {
-            first_name: firstname,
-            last_name: lastname,
-            username,
-            password,
-        },
-        { withCredentials: true,}
-        );
-      if (response.status === 200 || response.status === 201) {
-        router.push('/chat');
-      }
-      setError(false);
-    } catch (err) {
-      console.error("Axios error:", {
-        message: err.message,
-        code: err.code,
-        response: err.response,
-        data: err.response?.data,
-      });
+      setLoading(true);
+      setError('');
 
-      setError(true);
-      setErrorMessage(
-        err.response?.data?.username?.[0] ||
+      const formData = new FormData();
+      formData.append("email", email);
+      formData.append("password", password);
+      formData.append("username", username);
+      formData.append("bio", bio);
+      if (avatar) formData.append("avatar", avatar);
+
+      const res = await axios.post(
+        "http://127.0.0.1:8000/users/register/",
+        formData,
+        { withCredentials: true }
+      );
+
+      if (res.status === 200 || res.status === 201) {
+        router.push("/chat");
+      }
+    } catch (err) {
+      setError(
+        err.response?.data?.email?.[0] ||
         err.response?.data?.password?.[0] ||
         "Registration failed. Try again."
       );
-    }
-    finally {
-      setRegistered(false);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const isFormValid = firstname && lastname && username && password && confirmPassword;
 
   return (
     <>
       <Head>
         <title>Register</title>
       </Head>
+
       <div className="d-flex justify-content-center align-items-center vh-100">
-        <form className="row w-50 p-4 border rounded bg-light" onSubmit={handleSubmit}>
-          {error && <p className="btn btn-warning">{errorMessage}</p>}
+        <form
+          className="p-4 border rounded bg-light"
+          style={{ minWidth: "350px" }}
+          onSubmit={handleSubmit}
+        >
+          {error && <p className="alert alert-warning">{error}</p>}
 
-          <div className="col-sm-6">
-            <label className="form-label" htmlFor="firstname">First Name</label>
-            <input
-              type="text"
-              id="firstname"
-              className="form-control"
-              value={firstname}
-              onChange={(e) => setFirstname(e.target.value)}
-            />
-          </div>
+          {/* Step 1 */}
+          {step === 1 && (
+            <div>
+              <label className="form-label fw-bold">Email</label>
+              <input
+                type="email"
+                className="form-control mb-3"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-success w-100 d-flex align-items-center justify-content-center gap-2"
+                onClick={handleNext}
+                disabled={!email}
+              >
+                Next
+                <ArrowRightCircle size={20} />
+              </button>
+            </div>
+          )}
 
-          <div className="col-sm-6">
-            <label className="form-label" htmlFor="lastname">Last Name</label>
-            <input
-              type="text"
-              id="lastname"
-              className="form-control"
-              value={lastname}
-              onChange={(e) => setLastname(e.target.value)}
-            />
-          </div>
+          {/* Step 2 */}
+          {step === 2 && (
+            <div>
+              <label className="form-label fw-bold">Password</label>
+              <input
+                type="password"
+                className="form-control mb-3"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
 
-          <div>
-            <label className="form-label" htmlFor="username">Username</label>
-            <input
-              type="text"
-              id="username"
-              className="form-control"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
+              <label className="form-label fw-bold">Confirm Password</label>
+              <input
+                type="password"
+                className="form-control mb-3"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
 
-          <div className="col-sm-6">
-            <label className="form-label" htmlFor="password">Password</label>
-            <input
-              className="form-control"
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+              <div className="d-flex justify-content-between">
+                <button type="button" className="btn btn-secondary" onClick={handleBack}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success d-flex align-items-center gap-2"
+                  onClick={handleNext}
+                  disabled={!password || !confirmPassword}
+                >
+                  Next
+                  <ArrowRightCircle size={20} />
+                </button>
+              </div>
+            </div>
+          )}
 
-          <div className="col-sm-6">
-            <label className="form-label" htmlFor="confirmPassword">Confirm Password</label>
-            <input
-              className="form-control"
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
+          {/* Step 3 */}
+          {step === 3 && (
+            <div>
+              <div className="d-flex">
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "50px",
+                    height: "50px",
+                    backgroundColor: "#f0f0f0",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    marginTop: "10px",
+                    marginBottom: "10px",
+                    marginRight: "20px"
+                  }}
+                >
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar Preview"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <UserPlusIcon size={18} />
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                />
+                <div>
+                  {/* <label className="form-label fw-bold">Username</label> */}
+                  <input
+                    type="text"
+                    className="form-control mt-3"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Type your preferred username"
+                    required
+                  />
+                </div>
+              </div>
+              
+              
 
-          <button className="mt-3 px-2 btn btn-success" disabled={!isFormValid} type="submit">Register</button>
+              <label className="form-label fw-bold">Bio</label>
+              <textarea
+                className="form-control mb-3"
+                rows={2}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+              />
 
-          {registered && (
-            <p className="btn btn-info">Registering...</p>
+              <div className="d-flex justify-content-between">
+                <button type="button" className="btn btn-secondary" onClick={handleBack}>
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-success"
+                  disabled={loading}
+                >
+                  {loading ? "Registering..." : "Register"}
+                </button>
+              </div>
+            </div>
           )}
         </form>
       </div>

@@ -75,3 +75,15 @@
   gap: 0.5rem;
   flex-wrap: nowrap;
 }
+
+/* globals.css */
+.fade-out {
+  animation: fadeOut 1s ease forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
