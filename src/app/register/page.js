@@ -1,16 +1,23 @@
 'use client';
-import Head from "next/head";
-import { useState, useRef } from "react";
-import axios from "axios";
-import { ArrowRightCircle, UserPlusIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 
-const Register = () => {
+import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, ArrowLeft, UserPlus, Camera, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from '@/lib/api';
+
+export default function Register() {
   const router = useRouter();
   const fileInputRef = useRef(null);
 
+  // Layout & Auth Type
   const [step, setStep] = useState(1);
+  const [authType, setAuthType] = useState('email'); // 'email' or 'phone'
+
+  // Data Fields
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+233');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -18,11 +25,21 @@ const Register = () => {
   const [avatar, setAvatar] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
+  // UI State
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleNext = () => setStep(prev => prev + 1);
-  const handleBack = () => setStep(prev => prev - 1);
+  // Auto-detect Country (Same as Login)
+  useEffect(() => {
+    const detectCountry = async () => {
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        const data = await res.json();
+        if (data?.country_calling_code) setCountryCode(data.country_calling_code);
+      } catch {}
+    };
+    detectCountry();
+  }, []);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -36,7 +53,7 @@ const Register = () => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError('Passwords do not match');
       return;
     }
 
@@ -45,186 +62,157 @@ const Register = () => {
       setError('');
 
       const formData = new FormData();
-      formData.append("email", email);
-      formData.append("password", password);
-      formData.append("username", username);
-      formData.append("bio", bio);
-      if (avatar) formData.append("avatar", avatar);
-
-      const res = await axios.post(
-        "http://127.0.0.1:8000/users/register/",
-        formData,
-        { withCredentials: true }
-      );
-
-      if (res.status === 200 || res.status === 201) {
-        router.push("/chat");
+      // Logic to decide which identity to send
+      if (authType === 'email') {
+        formData.append('email', email);
+      } else {
+        formData.append('phone', `${countryCode}${phone}`);
       }
+      
+      formData.append('password', password);
+      formData.append('username', username);
+      formData.append('bio', bio);
+      if (avatar) formData.append('avatar', avatar);
+
+      // Using your 'api' instance for consistency
+      await api.post('/users/register/', formData);
+      
+      router.push('/chat');
     } catch (err) {
-      setError(
-        err.response?.data?.email?.[0] ||
-        err.response?.data?.password?.[0] ||
-        "Registration failed. Try again."
-      );
+      setError(err.response?.data?.message || 'Registration failed. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <Head>
-        <title>Register</title>
-      </Head>
-
-      <div className="d-flex justify-content-center align-items-center vh-100">
-        <form
-          className="p-4 border rounded bg-light"
-          style={{ minWidth: "350px" }}
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-md">
+        <motion.form
           onSubmit={handleSubmit}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl shadow-xl border border-slate-100 p-8 space-y-6"
         >
-          {error && <p className="alert alert-warning">{error}</p>}
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-slate-900">Create Account</h1>
+            <p className="text-sm text-slate-500 mt-1">Join the community today</p>
+          </div>
 
-          {/* Step 1 */}
-          {step === 1 && (
-            <div>
-              <label className="form-label fw-bold">Email</label>
-              <input
-                type="email"
-                className="form-control mb-3"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="btn btn-success w-100 d-flex align-items-center justify-content-center gap-2"
-                onClick={handleNext}
-                disabled={!email}
-              >
-                Next
-                <ArrowRightCircle size={20} />
-              </button>
-            </div>
-          )}
-
-          {/* Step 2 */}
-          {step === 2 && (
-            <div>
-              <label className="form-label fw-bold">Password</label>
-              <input
-                type="password"
-                className="form-control mb-3"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-
-              <label className="form-label fw-bold">Confirm Password</label>
-              <input
-                type="password"
-                className="form-control mb-3"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-
-              <div className="d-flex justify-content-between">
-                <button type="button" className="btn btn-secondary" onClick={handleBack}>
-                  Back
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-success d-flex align-items-center gap-2"
-                  onClick={handleNext}
-                  disabled={!password || !confirmPassword}
-                >
-                  Next
-                  <ArrowRightCircle size={20} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3 */}
-          {step === 3 && (
-            <div>
-              <div className="d-flex">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "50px",
-                    height: "50px",
-                    backgroundColor: "#f0f0f0",
-                    borderRadius: "50%",
-                    cursor: "pointer",
-                    overflow: "hidden",
-                    marginTop: "10px",
-                    marginBottom: "10px",
-                    marginRight: "20px"
-                  }}
-                >
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt="Avatar Preview"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <UserPlusIcon size={18} />
-                  )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handleFileChange}
+          {/* Progress Bar */}
+          <div className="flex gap-2 px-1">
+            {[1, 2, 3].map((s) => (
+              <div key={s} className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={false}
+                  animate={{ width: step >= s ? '100%' : '0%' }}
+                  className="h-full bg-blue-600"
                 />
-                <div>
-                  {/* <label className="form-label fw-bold">Username</label> */}
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-red-50 text-red-600 text-xs p-3 rounded-xl text-center border border-red-100">
+              {error}
+            </motion.div>
+          )}
+
+          <AnimatePresence mode="wait">
+            {/* STEP 1: IDENTITY */}
+            {step === 1 && (
+              <motion.div key="step1" initial={{ x: 10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -10, opacity: 0 }} className="space-y-4">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button type="button" onClick={() => setAuthType('email')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${authType === 'email' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Email</button>
+                  <button type="button" onClick={() => setAuthType('phone')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${authType === 'phone' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Phone</button>
+                </div>
+
+                {authType === 'email' ? (
                   <input
-                    type="text"
-                    className="form-control mt-3"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Type your preferred username"
+                    type="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition"
                     required
                   />
-                </div>
-              </div>
-              
-              
+                ) : (
+                  <div className="flex gap-2">
+                    <input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} className="w-20 px-2 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center" />
+                    <input type="tel" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required />
+                  </div>
+                )}
 
-              <label className="form-label fw-bold">Bio</label>
-              <textarea
-                className="form-control mb-3"
-                rows={2}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-              />
-
-              <div className="d-flex justify-content-between">
-                <button type="button" className="btn btn-secondary" onClick={handleBack}>
-                  Back
-                </button>
                 <button
-                  type="submit"
-                  className="btn btn-success"
-                  disabled={loading}
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={authType === 'email' ? !email : !phone}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-blue-100"
                 >
-                  {loading ? "Registering..." : "Register"}
+                  Continue <ArrowRight size={18} />
                 </button>
-              </div>
-            </div>
-          )}
-        </form>
-      </div>
-    </>
-  );
-};
+              </motion.div>
+            )}
 
-export default Register;
+            {/* STEP 2: SECURITY */}
+            {step === 2 && (
+              <motion.div key="step2" initial={{ x: 10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -10, opacity: 0 }} className="space-y-4">
+                <input type="password" placeholder="Create Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" required />
+                <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" required />
+                
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setStep(1)} className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition active:scale-[0.98]">
+                    <ArrowLeft size={18} /> Back
+                  </button>
+                  <button type="button" onClick={() => setStep(3)} disabled={!password || password !== confirmPassword} className="flex-[2] bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-blue-100">
+                    Next <ArrowRight size={18} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* STEP 3: PROFILE */}
+            {step === 3 && (
+              <motion.div key="step3" initial={{ x: 10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -10, opacity: 0 }} className="space-y-5">
+                <div className="flex flex-col items-center gap-3">
+                  <div onClick={() => fileInputRef.current?.click()} className="relative w-24 h-24 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-blue-400 transition-colors group overflow-hidden">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} className="w-full h-full object-cover" alt="Preview" />
+                    ) : (
+                      <div className="text-slate-400 group-hover:text-blue-500 flex flex-col items-center">
+                        <Camera size={24} />
+                        <span className="text-[10px] mt-1 uppercase font-bold">Upload</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium italic">Click to add a profile photo</p>
+                </div>
+
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                <input type="text" placeholder="Your Display Name" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" required />
+                <textarea placeholder="Tell us a bit about yourself..." value={bio} onChange={(e) => setBio(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none" />
+
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setStep(2)} className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                    <ArrowLeft size={18} />
+                  </button>
+                  <button type="submit" disabled={loading || !username} className="flex-[3] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-lg shadow-green-100">
+                    {loading ? 'Creating Account...' : 'Complete Registration'}
+                    <Check size={18} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <p className="text-center text-sm text-slate-500">
+            Already have an account?{' '}
+            <span onClick={() => router.push('/login')} className="text-blue-600 cursor-pointer font-bold hover:underline">
+              Sign In
+            </span>
+          </p>
+        </motion.form>
+      </div>
+    </div>
+  );
+}
