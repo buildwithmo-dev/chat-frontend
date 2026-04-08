@@ -82,15 +82,18 @@ export default function Register() {
       if (authResponse.error) throw authResponse.error;
 
       /**
-       * CRITICAL FIX: Ensure session is established.
-       * Supabase signUp might not immediately update the session in the background.
-       * We wait for it here so the 'api' interceptor has a token to grab.
+       * CRITICAL: Capture the session immediately.
+       * If email/phone confirmation is REQUIRED in your Supabase settings,
+       * session will be null here until the user clicks the link/enters OTP.
        */
       const { data: { session } } = await supabase.auth.getSession();
 
       if (!session) {
-        // If email confirmation is required, session might be null.
-        setError('Confirmation email sent! Please verify your email before finishing profile setup.');
+        const message = authType === 'email' 
+          ? 'Confirmation email sent! Please verify your email, then sign in to complete your profile.'
+          : 'Registration successful! Please sign in and verify your phone via SMS to continue.';
+        
+        setError(message);
         setLoading(false);
         return;
       }
@@ -102,8 +105,8 @@ export default function Register() {
       if (avatar) formData.append('avatar', avatar);
 
       /**
-       * 3. Send to Django
-       * 'api' automatically attaches Authorization: Bearer <session.access_token>
+       * 3. Sync with Django
+       * 'api' axios instance automatically attaches the Bearer token from the session.
        */
       await api.post('/users/register/', formData, {
         headers: {
@@ -146,14 +149,14 @@ export default function Register() {
             ))}
           </div>
 
-          {/* Error Message */}
+          {/* Messages */}
           <AnimatePresence>
             {error && (
               <motion.div 
                 initial={{ opacity: 0, height: 0 }} 
                 animate={{ opacity: 1, height: 'auto' }} 
                 exit={{ opacity: 0, height: 0 }}
-                className="bg-red-50 text-red-600 text-xs p-3 rounded-xl text-center border border-red-100"
+                className={`${error.includes('sent') || error.includes('successful') ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'} text-xs p-3 rounded-xl text-center border border-current opacity-80`}
               >
                 {error}
               </motion.div>
