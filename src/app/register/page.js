@@ -81,21 +81,39 @@ export default function Register() {
 
       if (authResponse.error) throw authResponse.error;
 
+      /**
+       * CRITICAL FIX: Ensure session is established.
+       * Supabase signUp might not immediately update the session in the background.
+       * We wait for it here so the 'api' interceptor has a token to grab.
+       */
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        // If email confirmation is required, session might be null.
+        setError('Confirmation email sent! Please verify your email before finishing profile setup.');
+        setLoading(false);
+        return;
+      }
+
       // 2. Prepare Profile Data for Django
-      // We send the extra info (username, bio, avatar) to Django to create the Profile
       const formData = new FormData();
       formData.append('username', username);
       formData.append('bio', bio);
       if (avatar) formData.append('avatar', avatar);
 
       /**
-       * IMPORTANT: Your 'api' axios instance (with the interceptor we built) 
-       * will automatically attach the Supabase JWT to this request.
+       * 3. Send to Django
+       * 'api' automatically attaches Authorization: Bearer <session.access_token>
        */
-      await api.post('/users/register/', formData);
+      await api.post('/users/register/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       
       router.push('/chat');
     } catch (err) {
+      console.error("Registration Error:", err);
       setError(err.message || 'Registration failed. Try again.');
     } finally {
       setLoading(false);
