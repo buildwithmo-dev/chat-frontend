@@ -1,15 +1,22 @@
 import axios from "axios";
+import { createClient } from "@/utils/supabase/client"; // 1. Import your client creator
+
+const supabase = createClient(); // 2. Initialize it here
 
 const api = axios.create({
-  // Ensure the environment variable in Vercel starts with https://
   baseURL: process.env.NEXT_PUBLIC_API_URL,
 });
 
-// Add this interceptor to automatically attach your Supabase Token
+// 3. Add the interceptor to attach the token
 api.interceptors.request.use(async (config) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (error) {
+    console.error("Auth session error:", error);
   }
   return config;
 });
