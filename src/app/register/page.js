@@ -92,7 +92,7 @@ export default function Register() {
        * IMPORTANT: Your 'api' axios instance (with the interceptor we built) 
        * will automatically attach the Supabase JWT to this request.
        */
-      await api.post('/users/register', formData);
+      await api.post('/users/register/', formData);
       
       router.push('/chat');
     } catch (err) {
