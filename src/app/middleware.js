@@ -1,42 +1,57 @@
-// middleware.js
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 
 export async function middleware(request) {
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
+  const response = NextResponse.next()
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
-        get(name) { return request.cookies.get(name)?.value },
-        set(name, value, options) {
-          request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: { headers: request.headers } })
-          response.cookies.set({ name, value, ...options })
+        get(name) {
+          return request.cookies.get(name)?.value
         },
-        remove(name, options) {
-          request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: { headers: request.headers } })
-          response.cookies.delete({ name, ...options })
+        set() {
+          // middleware cannot reliably set request cookies
+          // handled via response only
+        },
+        remove() {
+          // handled via response only
         },
       },
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  // -----------------------------
+  // READ USER FROM COOKIE CONTEXT
+  // -----------------------------
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  // If no session and trying to access protected route, redirect to login
-  if (!session && request.nextUrl.pathname.startsWith('/chat')) {
+  const path = request.nextUrl.pathname
+
+  const isProtectedRoute =
+    path.startsWith('/chat') || path.startsWith('/profile')
+
+  const isAuthRoute =
+    path.startsWith('/login') || path.startsWith('/register')
+
+  // -----------------------------
+  // REDIRECT LOGIC (SAFE)
+  // -----------------------------
+  if (!user && isProtectedRoute) {
     return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  if (user && isAuthRoute) {
+    return NextResponse.redirect(new URL('/chat', request.url))
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/chat/:path*', '/profile/:path*'],
+  matcher: ['/chat/:path*', '/profile/:path*', '/login', '/register'],
 }

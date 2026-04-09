@@ -2,61 +2,54 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, LogOut, Settings } from 'lucide-react';
+import { Send, Loader2, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { createClient } from '@/utils/supabase/client';
-import { useAuth } from '@/context/AuthContext';
 
 export default function Chat() {
-  const { user, signOut, loading: authLoading } = useAuth();
   const supabase = createClient();
   const router = useRouter();
 
+  const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+
   const scrollRef = useRef(null);
 
-  // 1. Protection & Initial Fetch
+  // -----------------------------
+  // GET SESSION (SOURCE OF TRUTH)
+  // -----------------------------
   useEffect(() => {
-    if (!authLoading && !user) router.push('/login');
-    if (user) fetchHistory();
-  }, [user, authLoading]);
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data?.session;
 
-  // 2. THE REALTIME ENGINE
-  useEffect(() => {
-    if (!user) return;
+      if (!currentSession?.access_token) {
+        router.push('/login');
+        return;
+      }
 
-    // Subscribe to the 'messages' table
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT', // Listen only for new messages
-          schema: 'public',
-          table: 'messages',
-        },
-        (payload) => {
-          // Add the new message to the UI state immediately
-          setMessages((prev) => [...prev, payload.new]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+      setSession(currentSession);
+      fetchHistory(currentSession.access_token);
+      subscribeRealtime(currentSession.user.id);
     };
-  }, [supabase, user]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    init();
+  }, []);
 
-  const fetchHistory = async () => {
+  // -----------------------------
+  // FETCH CHAT HISTORY (OPTION B SAFE)
+  // -----------------------------
+  const fetchHistory = async (token) => {
     try {
-      const res = await api.get('/messages/allchats/');
+      const res = await api.get('/messages/allchats/', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       setMessages(res.data);
     } catch (err) {
       console.error('History fetch failed:', err);
@@ -65,80 +58,136 @@ export default function Chat() {
     }
   };
 
+  // -----------------------------
+  // REALTIME (SAFE + FILTERED)
+  // -----------------------------
+  const subscribeRealtime = (userId) => {
+    const channel = supabase
+      .channel('messages-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          // Optional safety filter (prevents spam from other users if needed)
+          if (payload.new?.user_id) {
+            setMessages((prev) => [...prev, payload.new]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  };
+
+  // -----------------------------
+  // SEND MESSAGE (OPTION B SAFE)
+  // -----------------------------
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || !session?.access_token) return;
 
-    const textToSend = message;
-    setMessage(''); // Clear input immediately for snappy UX
+    const text = message;
+    setMessage('');
 
     try {
-      // We send to DJANGO. Django saves it, then Supabase Realtime pushes it back to us.
-      await api.post('/messages/send/', {
-        text: textToSend,
-        // user_id is handled by Django using the Supabase JWT
-      });
+      await api.post(
+        '/messages/send/',
+        { text },
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
     } catch (err) {
-      console.error('Failed to send:', err);
-      // Optional: Add logic to show the message failed to send
+      console.error('Send failed:', err);
     }
   };
 
-  if (authLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  // -----------------------------
+  // SIGN OUT (SAFE)
+  // -----------------------------
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('access_token');
+    router.push('/login');
+  };
+
+  // -----------------------------
+  // AUTO SCROLL
+  // -----------------------------
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Loader2 className="animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-dvh bg-slate-50">
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-            {user?.email?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <h1 className="font-bold text-slate-900">Global Chat</h1>
-            <p className="text-xs text-green-500 font-medium italic">Live</p>
-          </div>
+
+      {/* HEADER */}
+      <header className="flex items-center justify-between px-6 py-4 bg-white border-b">
+        <div>
+          <h1 className="font-bold">Global Chat</h1>
+          <p className="text-xs text-green-500">Live</p>
         </div>
-        <button onClick={signOut} className="text-slate-400 hover:text-red-500 transition-colors">
+
+        <button onClick={signOut} className="text-red-400">
           <LogOut size={20} />
         </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-4">
-        {loading ? (
-          <div className="flex justify-center mt-10"><Loader2 className="animate-spin text-slate-300" /></div>
-        ) : (
-          <AnimatePresence>
-            {messages.map((msg, index) => {
-              const isMe = msg.user_id === user?.id;
-              return (
-                <motion.div
-                  key={msg.id || index}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+      {/* MESSAGES */}
+      <main className="flex-1 overflow-y-auto p-4 space-y-3">
+        <AnimatePresence>
+          {messages.map((msg) => {
+            const isMe = msg.user_id === session?.user?.id;
+
+            return (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`px-4 py-2 rounded-2xl max-w-[75%] text-sm ${
+                    isMe
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white border'
+                  }`}
                 >
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
-                    <div className={`px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'}`}>
-                      {msg.text}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        )}
+                  {msg.text}
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
         <div ref={scrollRef} />
       </main>
 
-      <footer className="p-4 bg-white border-t border-slate-100">
+      {/* INPUT */}
+      <footer className="p-4 bg-white border-t">
         <form onSubmit={sendMessage} className="flex gap-2">
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl outline-none focus:border-blue-400"
+            placeholder="Type message..."
+            className="flex-1 p-2 border rounded-xl"
           />
-          <button type="submit" className="bg-blue-600 p-2.5 text-white rounded-xl">
+
+          <button className="bg-blue-600 text-white p-2 rounded-xl">
             <Send size={18} />
           </button>
         </form>

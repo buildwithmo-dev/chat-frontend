@@ -3,42 +3,75 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 
-const AuthContext = createContext({});
+const AuthContext = createContext({
+  user: null,
+  session: null,
+  loading: true,
+  signOut: async () => {},
+});
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // -----------------------------
+  // INIT AUTH (SOURCE OF TRUTH)
+  // -----------------------------
   useEffect(() => {
-    // 1. Check active sessions on load
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+    const init = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      setSession(session || null);
+      setUser(session?.user || null);
       setLoading(false);
     };
 
-    initializeAuth();
+    init();
 
-    // 2. Listen for auth changes (sign in, sign out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    // -----------------------------
+    // LISTEN FOR CHANGES
+    // -----------------------------
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session || null);
+      setUser(session?.user || null);
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, []);
 
+  // -----------------------------
+  // SIGN OUT
+  // -----------------------------
   const signOut = async () => {
     await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signOut,
+        accessToken: session?.access_token || null,
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook to use the auth context
+// -----------------------------
+// SAFE HOOK
+// -----------------------------
 export const useAuth = () => useContext(AuthContext);
